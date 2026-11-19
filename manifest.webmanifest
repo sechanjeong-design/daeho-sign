@@ -1,5 +1,5 @@
 {
-  "name": "대호냉각기 결재",
+  "name": "PDF 결재",
   "short_name": "결재",
   "description": "PDF 발주서·작업지시서에 서명하고 카카오톡으로 회신하는 결재 앱",
   "lang": "ko",

@@ -1,4 +1,4 @@
-// 대호냉각기 결재 앱 - 화면 동작
+// PDF 결재 앱 - 화면 동작
 import { loadPdf, findApprovalCell, stampApprove, stampReject, fmtDateTime } from './core.js';
 
 const $ = id => document.getElementById(id);
@@ -19,7 +19,7 @@ const state = { bytes: null, name: '', doc: null, cell: null, pages: [], moveMod
 window.__ds = state; // 점검용
 
 // ───────────── 화면 전환 ─────────────
-const TITLES = { vHome: '대호냉각기 결재', vDoc: '', vDone: '결재 완료', vSettings: '설정' };
+const TITLES = { vHome: 'PDF 결재', vDoc: '', vDone: '결재 완료', vSettings: '설정' };
 function show(view) {
   for (const v of ['vHome', 'vDoc', 'vDone', 'vSettings']) $(v).hidden = v !== view;
   if (view !== 'vSettings') state.back = view;
@@ -313,7 +313,7 @@ function reasonPagePng(reason, when) {
   for (const ln of lines) { if (ly > y + boxH - 30) break; g.fillText(ln, M + 30, ly); ly += 54; }
 
   g.fillStyle = '#888'; g.font = `26px ${FONT}`; g.textAlign = 'center';
-  g.fillText('대호냉각기 결재 앱에서 생성된 문서입니다.', W / 2, H - 140);
+  g.fillText('PDF 결재 앱에서 생성된 문서입니다.', W / 2, H - 140);
   return canvasPng(cv);
 }
 

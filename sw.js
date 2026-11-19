@@ -1,6 +1,6 @@
-// 대호냉각기 결재 - 서비스 워커
+// PDF 결재 - 서비스 워커
 // 1) 카카오톡 등에서 '공유'로 보낸 PDF 받기  2) 앱 파일 저장(오프라인 실행)
-const VERSION = 'v1.0.0';           // 앱 파일을 고치면 이 값을 올려 주세요
+const VERSION = 'v1.0.1';           // 앱 파일을 고치면 이 값을 올려 주세요
 const APP_CACHE = 'ds-app-' + VERSION;
 const INBOX = 'ds-inbox';
 const ASSETS = [
