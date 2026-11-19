@@ -368,7 +368,7 @@ async function finish(out, result, reason, when) {
   msg.innerHTML = '';
   msg.append(`${result} 완료`);
   const sm = document.createElement('small');
-  sm.textContent = `${fmtDateTime(when)} · 아래 [카카오톡으로 보내기]를 눌러 보낸 사람에게 회신하세요.`;
+  sm.textContent = `${fmtDateTime(when)} · ${IS_MOBILE ? '아래 [카카오톡으로 보내기]를 눌러 보낸 사람에게 회신하세요.' : '파일로 저장한 뒤 카카오톡 대화방에 끌어다 놓아 회신하세요.'}`;
   msg.appendChild(sm);
   show('vDone');
   await renderResult();
@@ -401,22 +401,33 @@ async function renderResult() {
 }
 
 const IS_MOBILE = (navigator.userAgentData && navigator.userAgentData.mobile) || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-if (!IS_MOBILE) $('shareHint').hidden = false;
+if (!IS_MOBILE) {
+  // PC: 카카오톡 PC는 공유하기로 파일을 받지 못하므로 '저장 → 대화방에 끌어다 놓기'를 기본으로
+  $('shareHint').hidden = false;
+  $('btnSave').className = 'kakao big';
+  $('btnSave').textContent = '파일로 저장 (카톡으로 보내기용)';
+  $('btnShare').className = 'ghost';
+  $('btnShare').textContent = '다른 앱으로 공유하기';
+  $('btnSave').parentNode.insertBefore($('btnSave'), $('btnShare'));
+  $('btnSave').parentNode.insertBefore($('shareHint'), $('btnShare'));
+}
 
 $('btnShare').onclick = async () => {
   const file = new File([state.out], state.outName, { type: 'application/pdf' });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     try {
       await navigator.share({ files: [file] });
-      // 카카오톡 PC는 파일을 복사만 해 두므로, 대화방에 붙여넣으라고 안내
-      if (!IS_MOBILE) ask('대화방에 붙여넣어 주세요', '카카오톡 PC는 파일을 복사해 둡니다. 보낼 사람의 대화방을 열고 Ctrl+V를 누르면 전송 창이 뜹니다.', [{ t: '확인', cls: 'primary' }]);
     } catch (e) { if (e.name !== 'AbortError') ask('공유하지 못했습니다', e.message, [{ t: '확인', cls: 'primary' }]); }
   } else {
     download();
     ask('파일로 저장했습니다', '이 기기에서는 공유하기를 쓸 수 없습니다. 저장된 파일을 카카오톡 대화방에 끌어다 놓아 보내 주세요.', [{ t: '확인', cls: 'primary' }]);
   }
 };
-$('btnSave').onclick = () => { download(); toast('파일로 저장했습니다.'); };
+$('btnSave').onclick = () => {
+  download();
+  if (IS_MOBILE) return toast('파일로 저장했습니다.');
+  ask('저장했습니다', '크롬 오른쪽 위 다운로드(↓) 목록에서 이 파일을 카카오톡 대화방 창으로 끌어다 놓으면 전송됩니다. 다운로드 폴더에서 끌어다 놓아도 됩니다.', [{ t: '확인', cls: 'primary' }]);
+};
 
 function download() {
   const url = URL.createObjectURL(new Blob([state.out], { type: 'application/pdf' }));
