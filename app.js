@@ -1,5 +1,5 @@
 // PDF 결재 앱 - 화면 동작
-import { loadPdf, findApprovalCell, stampApprove, stampReject, fmtDateTime } from './core.js';
+import { loadPdf, findApprovalCells, stampApprove, stampReject, fmtDateTime } from './core.js';
 
 const $ = id => document.getElementById(id);
 
@@ -15,7 +15,7 @@ const cfg = () => ({
   sign: store.get('sign', null),
 });
 
-const state = { bytes: null, name: '', doc: null, cell: null, pages: [], moveMode: false, out: null, outName: '', result: '', view: 'vHome', back: 'vHome', width: 0 };
+const state = { bytes: null, name: '', doc: null, cells: [], pages: [], moveMode: false, out: null, outName: '', result: '', view: 'vHome', back: 'vHome', width: 0 };
 window.__ds = state; // 점검용
 
 // ───────────── 화면 전환 ─────────────
@@ -55,8 +55,8 @@ async function openPdf(blob, name) {
     state.bytes = bytes;
     state.name = (name || '문서').replace(/\.pdf$/i, '') + '.pdf';
     state.doc = await loadPdf(bytes);
-    state.cell = await findApprovalCell(state.doc, cfg().label);
-    state.moveMode = !state.cell;
+    state.cells = await findApprovalCells(state.doc, cfg().label);
+    state.moveMode = !state.cells.length;
     show('vDoc');
     await renderPages();
     updateInfo();
@@ -107,8 +107,8 @@ async function renderPages() {
 function drawMarks() {
   const sign = cfg().sign;
   for (const p of state.pages) {
-    const c = state.cell;
-    if (!c || c.page !== p.num) { p.mark.hidden = true; continue; }
+    const c = state.cells.find(x => x.page === p.num);
+    if (!c) { p.mark.hidden = true; continue; }
     const [x1, y1, x2, y2] = p.vp.convertToViewportRectangle([c.x, c.y, c.x + c.w, c.y + c.h]);
     Object.assign(p.mark.style, {
       left: Math.min(x1, x2) + 'px', top: Math.min(y1, y2) + 'px',
@@ -119,13 +119,17 @@ function drawMarks() {
   }
 }
 
+/** 위치 바꾸기: 누른 페이지의 서명 위치를 새로 정함 (페이지마다 1곳) */
 function placeAt(num, ev) {
   if (!state.moveMode) return;
   const p = state.pages[num - 1];
   const r = p.wrap.getBoundingClientRect();
   const [x, y] = p.vp.convertToPdfPoint(ev.clientX - r.left, ev.clientY - r.top);
-  const w = state.cell ? state.cell.w : 48, h = state.cell ? state.cell.h : 34;
-  state.cell = { page: num, x: x - w / 2, y: y - h / 2, w, h, method: 'manual' };
+  const ref = state.cells.find(c => c.page === num) || state.cells[0];
+  const w = ref ? ref.w : 48, h = ref ? ref.h : 34;
+  state.cells = state.cells.filter(c => c.page !== num)
+    .concat({ page: num, x: x - w / 2, y: y - h / 2, w, h, method: 'manual' })
+    .sort((a, b) => a.page - b.page);
   state.moveMode = false;
   drawMarks();
   updateInfo();
@@ -133,12 +137,19 @@ function placeAt(num, ev) {
 
 function updateInfo() {
   const el = $('docInfo');
-  const c = state.cell, label = cfg().label;
+  const cells = state.cells, n = cells.length, total = state.pages.length || 1, label = cfg().label;
+  const where = total > 1 ? ` (${n}/${total}페이지)` : '';
   let msg, cls = 'ok', btn = '위치 바꾸기';
-  if (state.moveMode) { msg = c ? '새 서명 위치를 눌러 주세요.' : `'${label}' 칸을 찾지 못했습니다. 서명할 곳을 눌러 주세요.`; cls = 'warn'; btn = c ? '취소' : ''; }
-  else if (c.method === 'lines') msg = `결재란 '${label}' 칸에 서명합니다.`;
-  else if (c.method === 'estimate') { msg = `'${label}' 칸 위치를 추정했습니다. 빨간 점선 위치를 확인해 주세요.`; cls = 'warn'; }
-  else msg = '지정한 위치에 서명합니다.';
+  if (state.moveMode) {
+    msg = n ? (total > 1 ? '위치를 바꿀 페이지에서 새 서명 위치를 눌러 주세요.' : '새 서명 위치를 눌러 주세요.')
+            : `'${label}' 칸을 찾지 못했습니다. 서명할 곳을 눌러 주세요.`;
+    cls = 'warn'; btn = n ? '취소' : '';
+  } else if (cells.some(c => c.method === 'estimate')) {
+    msg = `'${label}' 칸 위치를 추정한 곳이 있습니다. 빨간 점선 위치를 확인해 주세요.${where}`; cls = 'warn';
+  } else if (cells.every(c => c.method === 'lines')) {
+    msg = n > 1 ? `결재란 '${label}' 칸 ${n}곳에 서명합니다.${where}` : `결재란 '${label}' 칸에 서명합니다.${where}`;
+  } else msg = `지정한 위치에 서명합니다.${where}`;
+  if (!state.moveMode && total > 1 && n < total) cls = 'warn';
   el.className = 'info ' + cls;
   el.innerHTML = '';
   const s = document.createElement('span');
@@ -154,37 +165,41 @@ function updateInfo() {
   renderDocCrop();
 }
 
-/** 문서 화면: 서명 들어갈 결재란을 크게 보여주기 */
+/** 문서 화면: 서명 들어갈 결재란을 크게 보여주기 (페이지별) */
 let cropJob = 0;
 async function renderDocCrop() {
   const box = $('docCrop');
   const job = ++cropJob;
-  if (!state.cell || state.moveMode) { box.hidden = true; return; }
+  if (!state.cells.length || state.moveMode) { box.hidden = true; return; }
   const sign = cfg().sign;
-  const res = await cropCanvas(state.doc, state.cell, Math.min(($('pages').clientWidth || 320) - 20, 560));
-  if (job !== cropJob) return;
-  const { cv, rect } = res;
-  const g = cv.getContext('2d');
-  g.save();
-  g.setLineDash([8, 6]); g.lineWidth = 3; g.strokeStyle = '#E53935';
-  g.strokeRect(rect.x + 2, rect.y + 2, rect.w - 4, rect.h - 4);
-  g.restore();
-  if (sign) {
-    const im = await loadImage(sign);
-    const k = Math.min(rect.w * 0.88 / im.width, rect.h * 0.7 / im.height);
-    g.globalAlpha = 0.75;
-    g.drawImage(im, rect.x + (rect.w - im.width * k) / 2, rect.y + (rect.h - im.height * k) / 2 - rect.h * 0.06, im.width * k, im.height * k);
-    g.globalAlpha = 1;
+  const im = sign ? await loadImage(sign) : null;
+  const maxW = Math.min(($('pages').clientWidth || 320) - 20, 560);
+  const multi = state.pages.length > 1;
+  const frag = document.createDocumentFragment();
+  for (const cell of state.cells) {
+    const { cv, rect } = await cropCanvas(state.doc, cell, maxW);
+    if (job !== cropJob) return;
+    const g = cv.getContext('2d');
+    g.save();
+    g.setLineDash([8, 6]); g.lineWidth = 3; g.strokeStyle = '#E53935';
+    g.strokeRect(rect.x + 2, rect.y + 2, rect.w - 4, rect.h - 4);
+    g.restore();
+    if (im) {
+      const k = Math.min(rect.w * 0.88 / im.width, rect.h * 0.7 / im.height);
+      g.globalAlpha = 0.75;
+      g.drawImage(im, rect.x + (rect.w - im.width * k) / 2, rect.y + (rect.h - im.height * k) / 2 - rect.h * 0.06, im.width * k, im.height * k);
+      g.globalAlpha = 1;
+    }
+    if (multi) frag.appendChild(capEl(`${cell.page}페이지`));
+    frag.appendChild(cv);
   }
   if (job !== cropJob) return;
   box.innerHTML = '';
-  box.appendChild(cv);
-  const cap = document.createElement('div');
-  cap.className = 'cap';
-  cap.textContent = sign ? '서명 들어갈 자리 미리보기' : '서명 들어갈 자리 (서명을 먼저 등록해 주세요)';
-  box.appendChild(cap);
+  box.appendChild(frag);
+  box.appendChild(capEl(sign ? '서명 들어갈 자리 미리보기' : '서명 들어갈 자리 (서명을 먼저 등록해 주세요)'));
   box.hidden = false;
 }
+function capEl(text) { const d = document.createElement('div'); d.className = 'cap'; d.textContent = text; return d; }
 
 /** 결재란 주변을 잘라서 크게 렌더링. rect = 칸 위치(캔버스 픽셀) */
 async function cropCanvas(doc, cell, maxW) {
@@ -200,6 +215,7 @@ async function cropCanvas(doc, cell, maxW) {
   const cv = document.createElement('canvas');
   cv.width = Math.ceil(Math.abs(c - a)); cv.height = Math.ceil(Math.abs(d - b));
   cv.style.width = Math.abs(c - a) / dpr + 'px';
+  cv.style.display = 'block'; cv.style.margin = '0 auto 6px';
   await page.render({ canvasContext: cv.getContext('2d'), viewport: vp, transform: [1, 0, 0, 1, -L, -T] }).promise;
   const [e, f, g2, h] = vp.convertToViewportRectangle([cell.x, cell.y, cell.x + cell.w, cell.y + cell.h]);
   return { cv, rect: { x: Math.min(e, g2) - L, y: Math.min(f, h) - T, w: Math.abs(g2 - e), h: Math.abs(h - f) } };
@@ -217,15 +233,16 @@ window.addEventListener('resize', () => {
 $('btnApprove').onclick = () => {
   const c = cfg();
   if (!c.sign) return ask('등록된 서명이 없습니다', '먼저 서명을 등록해 주세요.', [{ t: '닫기' }, { t: '서명 등록', cls: 'primary', fn: () => show('vSettings') }]);
-  if (!state.cell || state.moveMode) { state.moveMode = true; updateInfo(); return toast('서명이 들어갈 곳을 먼저 눌러 주세요.'); }
-  ask('정말 승인하시겠습니까?', state.name, [{ t: '아니오' }, { t: '예', cls: 'primary', fn: doApprove }]);
+  if (!state.cells.length || state.moveMode) { state.moveMode = true; updateInfo(); return toast('서명이 들어갈 곳을 먼저 눌러 주세요.'); }
+  const n = state.cells.length;
+  ask('정말 승인하시겠습니까?', state.name + (n > 1 ? ` · 결재란 ${n}곳에 서명` : ''), [{ t: '아니오' }, { t: '예', cls: 'primary', fn: doApprove }]);
 };
 
 async function doApprove() {
   busy('서명하는 중…');
   try {
     const c = cfg(), now = new Date();
-    const out = await stampApprove(state.bytes, state.cell, dataUrlBytes(c.sign), { date: now, showDate: c.showDate });
+    const out = await stampApprove(state.bytes, state.cells, dataUrlBytes(c.sign), { date: now, showDate: c.showDate });
     await finish(out, '승인', '', now);
   } catch (e) {
     ask('서명하지 못했습니다', e.message || String(e), [{ t: '확인', cls: 'primary' }]);
@@ -252,7 +269,7 @@ async function doReject(reason) {
   busy('반려 처리 중…');
   try {
     const now = new Date();
-    const out = await stampReject(state.bytes, state.moveMode ? null : state.cell, await rejectStampPng(), await reasonPagePng(reason, now));
+    const out = await stampReject(state.bytes, state.moveMode ? [] : state.cells, await rejectStampPng(), await reasonPagePng(reason, now));
     await finish(out, '반려', reason, now);
   } catch (e) {
     ask('반려 처리하지 못했습니다', e.message || String(e), [{ t: '확인', cls: 'primary' }]);
@@ -361,35 +378,39 @@ async function renderResult() {
   const box = $('doneCrop');
   box.innerHTML = '';
   const doc = await loadPdf(state.out);
-  const cell = state.result === '승인' || (state.cell && !state.moveMode) ? state.cell : null;
-  const pageNo = cell ? cell.page : 1;
+  const cells = state.moveMode ? [] : state.cells;
   const maxW = Math.min(box.clientWidth - 20 || 320, 560);
   const dpr = Math.min(window.devicePixelRatio || 1, 3);
-  let cv, cap;
-  if (cell) {
-    cv = (await cropCanvas(doc, cell, maxW)).cv;
-    cap = '결재란 확대';
+  const multi = state.pages.length > 1;
+  if (cells.length) {
+    for (const cell of cells) {
+      if (multi) box.appendChild(capEl(`${cell.page}페이지`));
+      box.appendChild((await cropCanvas(doc, cell, maxW)).cv);
+    }
+    box.appendChild(capEl(`결재란 확대${multi ? ` · ${cells.length}곳` : ''} · 파일명: ${state.outName}`));
   } else {
-    const page = await doc.getPage(pageNo);
-    cv = document.createElement('canvas');
+    const page = await doc.getPage(1);
+    const cv = document.createElement('canvas');
     const scale = maxW / page.getViewport({ scale: 1 }).width;
     const vp = page.getViewport({ scale: scale * dpr });
     cv.width = vp.width; cv.height = vp.height; cv.style.width = vp.width / dpr + 'px';
     await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
-    cap = `${pageNo}페이지`;
+    box.appendChild(cv);
+    box.appendChild(capEl(`1페이지 · 파일명: ${state.outName}`));
   }
-  box.appendChild(cv);
-  const capEl = document.createElement('div');
-  capEl.className = 'cap';
-  capEl.textContent = `${cap} · 파일명: ${state.outName}`;
-  box.appendChild(capEl);
 }
+
+const IS_MOBILE = (navigator.userAgentData && navigator.userAgentData.mobile) || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+if (!IS_MOBILE) $('shareHint').hidden = false;
 
 $('btnShare').onclick = async () => {
   const file = new File([state.out], state.outName, { type: 'application/pdf' });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    try { await navigator.share({ files: [file] }); }
-    catch (e) { if (e.name !== 'AbortError') ask('공유하지 못했습니다', e.message, [{ t: '확인', cls: 'primary' }]); }
+    try {
+      await navigator.share({ files: [file] });
+      // 카카오톡 PC는 파일을 복사만 해 두므로, 대화방에 붙여넣으라고 안내
+      if (!IS_MOBILE) ask('대화방에 붙여넣어 주세요', '카카오톡 PC는 파일을 복사해 둡니다. 보낼 사람의 대화방을 열고 Ctrl+V를 누르면 전송 창이 뜹니다.', [{ t: '확인', cls: 'primary' }]);
+    } catch (e) { if (e.name !== 'AbortError') ask('공유하지 못했습니다', e.message, [{ t: '확인', cls: 'primary' }]); }
   } else {
     download();
     ask('파일로 저장했습니다', '이 기기에서는 공유하기를 쓸 수 없습니다. 저장된 파일을 카카오톡 대화방에 끌어다 놓아 보내 주세요.', [{ t: '확인', cls: 'primary' }]);
@@ -537,8 +558,8 @@ $('optSave').onclick = async () => {
   store.set('showDate', $('optDate').checked);
   toast('설정을 저장했습니다.');
   if (state.doc && before !== cfg().label) {
-    state.cell = await findApprovalCell(state.doc, cfg().label);
-    state.moveMode = !state.cell;
+    state.cells = await findApprovalCells(state.doc, cfg().label);
+    state.moveMode = !state.cells.length;
   }
 };
 

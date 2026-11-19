@@ -15,13 +15,13 @@ export function loadPdf(bytes) {
 // ───────────────────────── 결재란 인식 ─────────────────────────
 
 /**
- * 결재란에서 label(예: '이사') 칸의 서명 영역을 찾는다.
- * @returns {{page:number, x:number, y:number, w:number, h:number, method:'lines'|'estimate'} | null}
+ * 모든 페이지에서 결재란 label(예: '이사') 칸의 서명 영역을 찾는다. (페이지당 1곳)
+ * @returns {Array<{page:number, x:number, y:number, w:number, h:number, method:'lines'|'estimate'}>}
  */
-export async function findApprovalCell(doc, label) {
+export async function findApprovalCells(doc, label) {
   const target = String(label || '').replace(/\s+/g, '');
-  if (!target) return null;
-  let fallback = null;
+  const out = [];
+  if (!target) return out;
 
   for (let p = 1; p <= doc.numPages; p++) {
     const page = await doc.getPage(p);
@@ -31,13 +31,15 @@ export async function findApprovalCell(doc, label) {
     const segs = await collectSegments(page);
     // 페이지 위쪽에 있는 라벨부터 확인 (결재란은 보통 상단)
     hits.sort((a, b) => b.y1 - a.y1);
+    let found = null, fallback = null;
     for (const hit of hits) {
       const cell = cellBelow(hit, segs);
-      if (cell) return { page: p, ...cell, method: 'lines' };
+      if (cell) { found = { page: p, ...cell, method: 'lines' }; break; }
       if (!fallback) fallback = { page: p, ...estimateCell(hit), method: 'estimate' };
     }
+    if (found || fallback) out.push(found || fallback);
   }
-  return fallback;
+  return out;
 }
 
 /** 텍스트에서 라벨 위치 찾기 (글자가 '이', ' ', '사'처럼 쪼개져 있어도 찾음) */
@@ -178,49 +180,49 @@ function uniq(arr) {
 // ───────────────────────── PDF 쓰기 ─────────────────────────
 
 /**
- * 승인: 칸 안에 서명 이미지 + 결재일자
+ * 승인: 각 칸 안에 서명 이미지 + 결재일자
  * @param {Uint8Array} pdfBytes 원본
- * @param {{page,x,y,w,h}} cell 서명 칸
+ * @param {Array<{page,x,y,w,h}>} cells 서명 칸 목록 (페이지마다 1곳)
  * @param {Uint8Array} signPng 서명 PNG
  * @param {{date?:Date, showDate?:boolean}} opt
  */
-export async function stampApprove(pdfBytes, cell, signPng, opt = {}) {
+export async function stampApprove(pdfBytes, cells, signPng, opt = {}) {
   const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
   const pdf = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
-  const page = pdf.getPage(cell.page - 1);
   const img = await pdf.embedPng(signPng);
+  const showDate = opt.showDate !== false;
+  const font = showDate ? await pdf.embedFont(StandardFonts.Helvetica) : null;
+  const label = fmtDate(opt.date || new Date());
 
-  const pad = Math.min(cell.w, cell.h) * 0.06;
-  let dateH = 0, font, label, fs;
-  if (opt.showDate !== false) {
-    font = await pdf.embedFont(StandardFonts.Helvetica);
-    label = fmtDate(opt.date || new Date());
-    fs = clamp(cell.h * 0.17, 4.5, 7);
-    dateH = fs + 1.5;
-  }
-  const box = { x: cell.x + pad, y: cell.y + pad + dateH, w: cell.w - pad * 2, h: cell.h - pad * 2 - dateH };
-  const s = Math.min(box.w / img.width, box.h / img.height);
-  const iw = img.width * s, ih = img.height * s;
-  page.drawImage(img, { x: box.x + (box.w - iw) / 2, y: box.y + (box.h - ih) / 2, width: iw, height: ih });
-
-  if (font) {
-    const tw = font.widthOfTextAtSize(label, fs);
-    page.drawText(label, { x: cell.x + (cell.w - tw) / 2, y: cell.y + pad + 0.5, size: fs, font, color: rgb(0.15, 0.15, 0.15) });
+  for (const cell of [].concat(cells)) {
+    const page = pdf.getPage(cell.page - 1);
+    const pad = Math.min(cell.w, cell.h) * 0.06;
+    const fs = clamp(cell.h * 0.17, 4.5, 7);
+    const dateH = showDate ? fs + 1.5 : 0;
+    const box = { x: cell.x + pad, y: cell.y + pad + dateH, w: cell.w - pad * 2, h: cell.h - pad * 2 - dateH };
+    const s = Math.min(box.w / img.width, box.h / img.height);
+    const iw = img.width * s, ih = img.height * s;
+    page.drawImage(img, { x: box.x + (box.w - iw) / 2, y: box.y + (box.h - ih) / 2, width: iw, height: ih });
+    if (font) {
+      const tw = font.widthOfTextAtSize(label, fs);
+      page.drawText(label, { x: cell.x + (cell.w - tw) / 2, y: cell.y + pad + 0.5, size: fs, font, color: rgb(0.15, 0.15, 0.15) });
+    }
   }
   return pdf.save();
 }
 
 /**
- * 반려: 칸 안에 빨간 '반려' 도장 + 마지막에 반려 사유 페이지 추가
+ * 반려: 각 칸 안에 빨간 '반려' 도장 + 마지막에 반려 사유 페이지 추가
  * @param {Uint8Array} stampPng '반려' 도장 이미지
  * @param {Uint8Array} reasonPng 반려 사유 페이지 이미지 (A4 세로 비율)
  */
-export async function stampReject(pdfBytes, cell, stampPng, reasonPng) {
+export async function stampReject(pdfBytes, cells, stampPng, reasonPng) {
   const { PDFDocument } = window.PDFLib;
   const pdf = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
-  if (cell) {
+  const list = [].concat(cells || []);
+  const img = list.length ? await pdf.embedPng(stampPng) : null;
+  for (const cell of list) {
     const page = pdf.getPage(cell.page - 1);
-    const img = await pdf.embedPng(stampPng);
     const pad = Math.min(cell.w, cell.h) * 0.08;
     const bw = cell.w - pad * 2, bh = cell.h - pad * 2;
     const s = Math.min(bw / img.width, bh / img.height);

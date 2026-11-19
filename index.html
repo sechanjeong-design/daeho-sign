@@ -88,7 +88,7 @@
 
   /* 팝업 */
   .modal { position:fixed; inset:0; z-index:50; background:rgba(0,0,0,.45); display:flex; align-items:flex-end; justify-content:center; }
-  .modal[hidden], .busy[hidden], .toast[hidden], .mark[hidden], #padHint[hidden], .crop[hidden] { display:none; }
+  .modal[hidden], .busy[hidden], .toast[hidden], .mark[hidden], #padHint[hidden], .crop[hidden], #shareHint[hidden] { display:none; }
   .sheet { background:#fff; width:100%; max-width:520px; border-radius:16px 16px 0 0; padding:22px 18px calc(18px + env(safe-area-inset-bottom)); }
   @media (min-width:700px) { .modal { align-items:center; } .sheet { border-radius:16px; } }
   .sheet h3 { margin:0 0 8px; font-size:20px; }
@@ -149,6 +149,7 @@
   <div id="doneMsg" class="result"></div>
   <div class="stack">
     <button id="btnShare" class="kakao big">카카오톡으로 보내기</button>
+    <p id="shareHint" class="muted center" hidden>PC: 공유 창에서 <b>카카오톡</b>을 고른 뒤, 보낼 대화방을 열고 <b>Ctrl+V</b>를 누르세요.</p>
     <button id="btnSave" class="ghost">파일로 저장</button>
   </div>
   <div id="doneCrop" class="crop"></div>
@@ -181,7 +182,7 @@
     <div id="recordList" class="muted">기록이 없습니다.</div>
     <div class="row"><button id="recClear" class="ghost small">기록 모두 지우기</button></div>
   </div>
-  <p class="muted center">PDF 결재 v1.0.1</p>
+  <p class="muted center">PDF 결재 v1.0.2</p>
 </section>
 
 <div id="modal" class="modal" hidden><div class="sheet"><div id="mBody"></div><div id="mBtns" class="mbtns"></div></div></div>
