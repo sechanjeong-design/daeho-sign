@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1F3864">
+<title>대호냉각기 결재</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<style>
+  :root { --navy:#1F3864; --red:#C62828; --line:#DDE2EA; --bg:#F4F6F9; --muted:#6B7280; --ok:#1B5E20; --warn:#8A6D00; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; background:var(--bg); color:#1F2328; font-family:'Malgun Gothic','Apple SD Gothic Neo','Noto Sans KR',sans-serif; }
+  body { padding-bottom:env(safe-area-inset-bottom); }
+  button { font-family:inherit; cursor:pointer; border:none; border-radius:10px; font-size:16px; padding:12px 16px; font-weight:bold; }
+  button:disabled { opacity:.5; cursor:default; }
+  .primary { background:var(--navy); color:#fff; }
+  .danger { background:#fff; color:var(--red); border:2px solid var(--red); }
+  .danger.fill { background:var(--red); color:#fff; }
+  .ghost { background:#fff; color:var(--navy); border:1px solid #C8CED8; }
+  .kakao { background:#FEE500; color:#191919; }
+  .big { font-size:19px; padding:16px; }
+  .small { font-size:13px; padding:8px 12px; }
+  .muted { color:var(--muted); font-size:13px; line-height:1.5; }
+  .center { text-align:center; }
+
+  header.bar { position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:6px; background:var(--navy); color:#fff;
+    padding:calc(env(safe-area-inset-top) + 10px) 8px 10px; min-height:56px; }
+  header .icon { background:transparent; color:#fff; font-size:24px; width:44px; height:44px; padding:0; }
+  #title { flex:1; font-size:17px; font-weight:bold; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; padding-left:6px; }
+
+  .view { max-width:1100px; margin:0 auto; padding:14px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:18px; margin-bottom:14px; }
+  .card h2 { font-size:16px; margin:0 0 12px; }
+
+  .hero { background:#fff; border:1px solid var(--line); border-radius:12px; padding:28px 20px; margin-bottom:14px; text-align:center; }
+  .hero h1 { font-size:21px; margin:0 0 10px; }
+  .hero p { margin:0 0 20px; color:#444; line-height:1.6; }
+  .hero .stack { display:flex; flex-direction:column; gap:10px; max-width:360px; margin:0 auto; }
+
+  .rec { display:flex; gap:10px; padding:10px 0; border-bottom:1px solid #EEF0F4; font-size:14px; }
+  .rec:last-child { border-bottom:none; }
+  .rec .when { color:var(--muted); font-size:12px; white-space:nowrap; min-width:92px; }
+  .rec .name { flex:1; word-break:break-all; }
+  .badge { display:inline-block; padding:2px 9px; border-radius:10px; font-size:12px; font-weight:bold; white-space:nowrap; height:fit-content; }
+  .badge.승인 { background:#E3F2E5; color:var(--ok); }
+  .badge.반려 { background:#FDE3E1; color:var(--red); }
+
+  /* 문서 보기 */
+  #vDoc { padding-bottom:110px; }
+  .info { display:flex; align-items:center; gap:10px; border-radius:10px; padding:12px 14px; margin-bottom:12px; font-size:15px; font-weight:bold; }
+  .info span { flex:1; }
+  .info.ok { background:#E8F5E9; color:var(--ok); }
+  .info.warn { background:#FFF4CE; color:var(--warn); }
+  .info button { background:#fff; color:inherit; border:1px solid currentColor; font-size:13px; padding:7px 10px; white-space:nowrap; }
+  .page { position:relative; margin:0 auto 12px; background:#fff; box-shadow:0 1px 4px rgba(0,0,0,.15); }
+  .page canvas { display:block; width:100%; height:100%; }
+  .moving .page { outline:3px solid #F9A825; cursor:crosshair; }
+  .mark { position:absolute; border:2px dashed #E53935; background:rgba(229,57,53,.07); pointer-events:none; display:flex; align-items:center; justify-content:center; }
+  .mark img { max-width:90%; max-height:80%; opacity:.7; }
+  .actions { position:fixed; left:0; right:0; bottom:0; z-index:15; display:flex; gap:10px; padding:12px 14px calc(12px + env(safe-area-inset-bottom));
+    background:#fff; border-top:1px solid var(--line); box-shadow:0 -2px 8px rgba(0,0,0,.06); }
+  .actions button { flex:1; }
+
+  /* 완료 */
+  .result { border-radius:12px; padding:18px; text-align:center; font-size:19px; font-weight:bold; margin-bottom:14px; }
+  .result.승인 { background:#E8F5E9; color:var(--ok); }
+  .result.반려 { background:#FDECEA; color:var(--red); }
+  .result small { display:block; font-size:13px; font-weight:normal; margin-top:6px; color:#444; }
+  .crop { background:#fff; border:1px solid var(--line); border-radius:12px; padding:10px; margin-bottom:14px; text-align:center; }
+  .crop canvas { max-width:100%; height:auto; }
+  .crop .cap { font-size:12px; color:var(--muted); margin-top:6px; }
+  .stack { display:flex; flex-direction:column; gap:10px; margin-bottom:16px; }
+
+  /* 설정 */
+  .padwrap { position:relative; border:2px dashed #C8CED8; border-radius:10px; background:#FCFCFD; }
+  #pad { display:block; width:100%; height:200px; touch-action:none; }
+  #padHint { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#B0B7C3; font-size:18px; pointer-events:none; }
+  .row { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+  .row button { flex:1; }
+  .saved { display:flex; align-items:center; gap:12px; margin-top:14px; font-size:13px; color:var(--muted); }
+  .saved img { max-height:60px; max-width:200px; border:1px solid var(--line); border-radius:6px; background:#fff; padding:4px; }
+  label { display:block; font-size:14px; font-weight:bold; margin:12px 0 6px; }
+  label input[type=text] { display:block; width:100%; margin-top:6px; padding:12px; border:1px solid #C8CED8; border-radius:8px; font-size:16px; font-family:inherit; font-weight:normal; }
+  label.check { display:flex; align-items:center; gap:8px; font-weight:normal; }
+  label.check input { width:20px; height:20px; }
+
+  /* 팝업 */
+  .modal { position:fixed; inset:0; z-index:50; background:rgba(0,0,0,.45); display:flex; align-items:flex-end; justify-content:center; }
+  .modal[hidden], .busy[hidden], .toast[hidden], .mark[hidden], #padHint[hidden], .crop[hidden] { display:none; }
+  .sheet { background:#fff; width:100%; max-width:520px; border-radius:16px 16px 0 0; padding:22px 18px calc(18px + env(safe-area-inset-bottom)); }
+  @media (min-width:700px) { .modal { align-items:center; } .sheet { border-radius:16px; } }
+  .sheet h3 { margin:0 0 8px; font-size:20px; }
+  .sheet p { margin:0 0 6px; color:#444; line-height:1.5; }
+  .sheet textarea { width:100%; min-height:120px; padding:12px; border:1px solid #C8CED8; border-radius:10px; font-size:16px; font-family:inherit; margin-top:8px; resize:vertical; }
+  .sheet textarea.err { border-color:var(--red); }
+  .mbtns { display:flex; gap:10px; margin-top:18px; }
+  .mbtns button { flex:1; font-size:18px; padding:15px; }
+
+  .toast { position:fixed; left:50%; bottom:110px; transform:translateX(-50%); z-index:60; background:rgba(30,30,30,.92); color:#fff;
+    padding:12px 18px; border-radius:10px; font-size:14px; max-width:90%; text-align:center; }
+  .busy { position:fixed; inset:0; z-index:70; background:rgba(255,255,255,.8); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; font-weight:bold; }
+  .spinner { width:42px; height:42px; border:4px solid #C8CED8; border-top-color:var(--navy); border-radius:50%; animation:spin 0.8s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .drop-on::after { content:'여기에 PDF를 놓으세요'; position:fixed; inset:0; z-index:80; display:flex; align-items:center; justify-content:center;
+    background:rgba(31,56,100,.85); color:#fff; font-size:24px; font-weight:bold; }
+</style>
+<script src="vendor/pdf-lib.min.js" defer></script>
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<header class="bar">
+  <button id="btnBack" class="icon" aria-label="뒤로" hidden>&#8249;</button>
+  <div id="title">대호냉각기 결재</div>
+  <button id="btnSettings" class="icon" aria-label="설정">&#9881;</button>
+</header>
+
+<!-- 처음 화면 -->
+<section id="vHome" class="view">
+  <div class="hero">
+    <h1>결재할 PDF를 열어 주세요</h1>
+    <p>카카오톡에서 받은 PDF를 열고<br><b>공유 → 결재</b>를 누르면 바로 열립니다.</p>
+    <div class="stack">
+      <button id="btnOpen" class="primary big">PDF 직접 열기</button>
+      <button id="btnInstall" class="ghost" hidden>이 기기에 앱 설치하기</button>
+    </div>
+    <input type="file" id="file" accept="application/pdf,.pdf" hidden>
+  </div>
+  <div class="card">
+    <h2>최근 결재</h2>
+    <div id="recentList" class="muted">아직 결재한 문서가 없습니다.</div>
+  </div>
+</section>
+
+<!-- 문서 보기 -->
+<section id="vDoc" class="view" hidden>
+  <div id="docInfo" class="info"></div>
+  <div id="docCrop" class="crop" hidden></div>
+  <div id="pages"></div>
+  <div class="actions">
+    <button id="btnReject" class="danger big">반려</button>
+    <button id="btnApprove" class="primary big">승인</button>
+  </div>
+</section>
+
+<!-- 결재 완료 -->
+<section id="vDone" class="view" hidden>
+  <div id="doneMsg" class="result"></div>
+  <div class="stack">
+    <button id="btnShare" class="kakao big">카카오톡으로 보내기</button>
+    <button id="btnSave" class="ghost">파일로 저장</button>
+  </div>
+  <div id="doneCrop" class="crop"></div>
+  <div class="stack"><button id="btnHome" class="ghost">처음으로</button></div>
+</section>
+
+<!-- 설정 -->
+<section id="vSettings" class="view" hidden>
+  <div class="card">
+    <h2>서명 등록</h2>
+    <div class="padwrap"><canvas id="pad"></canvas><div id="padHint">여기에 손가락으로 서명하세요</div></div>
+    <div class="row">
+      <button id="padClear" class="ghost">지우기</button>
+      <button id="padImg" class="ghost">도장 이미지</button>
+    </div>
+    <div class="row"><button id="padSave" class="primary">이 서명으로 저장</button></div>
+    <input type="file" id="imgFile" accept="image/*" hidden>
+    <div class="saved"><span id="savedLabel">저장된 서명 없음</span><img id="signPreview" alt="" hidden></div>
+  </div>
+  <div class="card">
+    <h2>결재란 설정</h2>
+    <label>서명할 칸 이름<input id="optLabel" type="text" placeholder="이사"></label>
+    <p class="muted">발주서 결재란에서 이 글자가 적힌 칸에 서명이 들어갑니다.</p>
+    <label>결재자 이름 (반려 사유서에 표시)<input id="optName" type="text" placeholder="예) 홍길동 이사"></label>
+    <label class="check"><input id="optDate" type="checkbox"> 서명 아래에 결재일자 표시</label>
+    <div class="row"><button id="optSave" class="primary">설정 저장</button></div>
+  </div>
+  <div class="card">
+    <h2>결재 기록 <span class="muted">(이 기기에만 저장)</span></h2>
+    <div id="recordList" class="muted">기록이 없습니다.</div>
+    <div class="row"><button id="recClear" class="ghost small">기록 모두 지우기</button></div>
+  </div>
+  <p class="muted center">대호냉각기 결재 v1.0</p>
+</section>
+
+<div id="modal" class="modal" hidden><div class="sheet"><div id="mBody"></div><div id="mBtns" class="mbtns"></div></div></div>
+<div id="toast" class="toast" hidden></div>
+<div id="busy" class="busy" hidden><div class="spinner"></div><div id="busyText">처리 중…</div></div>
+</body>
+</html>
